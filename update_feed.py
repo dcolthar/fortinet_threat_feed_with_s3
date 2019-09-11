@@ -1,18 +1,18 @@
 import json
 import boto3
 from botocore.vendored import requests
+from botocore.exceptions import ClientError
 
 class S3_Manipulation():
     def __init__(self, new_ip='169.254.1.1/32'):
         self.ip_list = []
         self.bucket_name = 'name_of_the_bucket_you_want_to_use'
+        # object name is the key that will be used to pull and/or create (if non existent) the object in the S3 bucket
         self.object_name = 'name_of_the_file_you_want_in_s3'
-        # the object_url is the full url including object of the dynamic threat feed list you want to use
-        # this is used to pull in the existing list and append to it when the API hits, if the file does not exist
-        # then the object will be created based on the bucket name and object name
-        self.object_url = 'https://full_url_of_the_bucket_and_object_to_pull_from'
         # in case this gets called with no event body we set it previously 169.254.1.1/32
         self.new_ip = new_ip
+        # create the s3 object to use in pull and push
+        self.s3 = boto3.resource("s3")
 
     def do_work(self):
         '''
@@ -25,24 +25,19 @@ class S3_Manipulation():
     def download_file(self):
         '''
         Pulls existing s3 object and gets info from it
-        :return: status_code
         '''
-        # need to pull in the ip info into a list
-        results = requests.get(self.object_url)
-
-        # now need to do things depending on if we have a list or not, if we get a 200 file exists already
-        if results.status_code == 200:
-            # split the results into our list
-            self.ip_list = results.text.split('\n')
-            # append the new IP to the list
-            self.ip_list.append(self.new_ip)
-            # return the status code
-            return
-        # 403 should mean file not found so needs created but no existing list to iterate through
-        elif results.status_code == 403:
-            print(results.status_code)
-            # we don't have a file already so need to just create one anyhow
-            # append the new IP to the list
+        try:
+            # need to pull in the ip info into a list
+            object = self.s3.Object(self.bucket_name, self.object_name)
+            self.ip_list = object.get()['Body'].read().decode('utf-8').split('\n')
+            # do a little cleanup of blank objects
+            for i in self.ip_list:
+                if i == '':
+                    self.ip_list.remove(i)
+            # append the new item
+        except ClientError as ce:
+            print('no such key {key} so this will be created'.format(key=self.object_name))
+        finally:
             self.ip_list.append(self.new_ip)
 
     def upload_file(self):
