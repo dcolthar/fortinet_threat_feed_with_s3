@@ -1,6 +1,5 @@
 import json
 import boto3
-from botocore.vendored import requests
 from botocore.exceptions import ClientError
 
 class S3_Manipulation():
